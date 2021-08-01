@@ -11,38 +11,6 @@ from .cost import get_cost
 from .optimizer import get_optimizer
 from tensorflow.python.client import device_lib
 from tensorflow.python.framework import graph_util
-from tensorflow_large_model_support import LMS
-
-# from callbacks import CudaProfileCallback, LMSStatsLogger, LMSStatsAverage
-
-
-# def get_callbacks(args):
-#     callbacks = []
-
-#     if hvd:
-#         callbacks.append(hvd.callbacks.BroadcastGlobalVariablesCallback(0))
-#         callbacks.append(hvd.callbacks.MetricAverageCallback())
-
-#     if args.nvprof:
-#         callbacks.append(CudaProfileCallback(args.nvprof_epoch,
-#                                              args.nvprof_start,
-#                                              args.nvprof_stop))
-
-#     if args.lms_stats:
-#         stats_filename = os.path.join(args.output_dir,
-#                                       generate_stats_name(args.model, "lms_stats"))
-#         callbacks.append(LMSStatsLogger(stats_filename))
-
-#     if args.lms_stats_average:
-#         stats_filename = os.path.join(args.output_dir,
-#                                       generate_stats_name(args.model, "lms_stats_average"))
-#         lms = LMSStatsAverage(stats_filename,
-#                               args.image_size,
-#                               batch_size=args.batch_size,
-#                               start_batch=args.lms_stats_warmup_steps)
-#         callbacks.append(lms)
-
-#     return callbacks
 
 def export_graph(sess, export_name, output_nodes=['output']):
     graph = tf.get_default_graph()
@@ -75,12 +43,10 @@ class Trainer(object):
 
     def __init__(self, net, opt_kwargs={}, cost_kwargs={}):
         self.net = net
-#         self.log_dir = "logs/fit/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
         
         current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
         self.train_log_dir = 'logs/gradient_tape/' + current_time + '/train'
 
-#         self.test_log_dir = 'logs/gradient_tape/' + current_time + '/test'
         self.test_every_epoch = opt_kwargs.get('test_every_epoch', 10)
         self.checkpoint_every_epoch = opt_kwargs.get('checkpoint_every_epoch', 1)
         self.tgt = tf.compat.v1.placeholder("float", shape=[None, None, None, self.net.n_class])
@@ -129,7 +95,6 @@ class Trainer(object):
         print("Epochs: " + str(epochs))
         print("Batch Size Train: " + str(data_provider.batchsize_tr))
         print("Batchsteps per Epoc " + str(batch_steps_per_epoch))
-        lms_hook = LMS()
         
         if not output_folder is None:
             checkpoint_path = os.path.join(output_folder, "model")
@@ -145,10 +110,8 @@ class Trainer(object):
         session_conf = tf.compat.v1.ConfigProto(allow_soft_placement=True)
         if gpu_device != 'cpu':
             session_conf.gpu_options.visible_device_list = gpu_device
-            # session_conf.gpu_options.experimental.lms_enabled = True
         
         with tf.compat.v1.Session(config=session_conf) as sess:
-#             file_writer = tf.summary.FileWriter(self.train_log_dir, sess.graph)
             sess.run(init)
             if restore_path is not None:
                 latest_checkpoint_path = tf.train.latest_checkpoint(restore_path)
@@ -279,9 +242,7 @@ class Trainer(object):
                                     self.net.x: batch_x,
                                     self.tgt: batch_tgt
                                 },
-                                hooks=[
-                                    lms_hook,
-                                ]
+                                hooks=[],
                             )
                             if self.cost_type is "cross_entropy_sum":
                                 sh = batch_x.shape

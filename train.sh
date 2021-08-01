@@ -21,9 +21,9 @@ for dataset in ${DATA_DIR}/train/newseye-*; do
         --steps_per_epoch 256 \
         --epochs 10 \
         --max_val 256 \
-        --scale_min 0.4 \
-        --scale_max 1.0 \
-        --scale_val 0.66 \
+        --scale_min 0.2 \
+        --scale_max 0.4 \
+        --scale_val 0.33 \
         --seed 13 \
         --gpu_device 0
     else
