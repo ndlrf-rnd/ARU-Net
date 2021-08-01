@@ -4,6 +4,23 @@ from __future__ import print_function, division
 import tensorflow as tf
 from tensorflow.python.framework import graph_util
 
+def export_graph(sess, export_name, output_nodes=['output']):
+    graph = tf.get_default_graph()
+    input_graph_def = graph.as_graph_def()
+
+    output_graph_def = graph_util.convert_variables_to_constants(
+        sess,  # The session is used to retrieve the weights
+        input_graph_def,  # The graph_def is used to retrieve the nodes
+        output_nodes  # The output node names are used to select the usefull nodes
+    )
+    # Finally we serialize and dump the output graph to the filesystem
+    with tf.gfile.GFile(export_name, "wb") as f:
+        f.write(output_graph_def.SerializeToString())
+    print("%d ops in the final graph." % len(output_graph_def.node))
+
+    print("Export Finished!")
+    return export_name
+
 
 class Exporter_ckpt(object):
     """
@@ -42,21 +59,9 @@ class Exporter_ckpt(object):
             else:
                 print("Error. You have to provide a path to restore a checkpoint.")
 
-            print("Export It")
-
-            graph = tf.get_default_graph()
-            input_graph_def = graph.as_graph_def()
-
-            output_graph_def = graph_util.convert_variables_to_constants(
-                sess,  # The session is used to retrieve the weights
-                input_graph_def,  # The graph_def is used to retrieve the nodes
-                output_nodes  # The output node names are used to select the usefull nodes
+            export_graph(
+                sess=sess,
+                export_name=export_name,
+                output_nodes=output_nodes
             )
-            # Finally we serialize and dump the output graph to the filesystem
-            with tf.gfile.GFile(export_name, "wb") as f:
-                f.write(output_graph_def.SerializeToString())
-            print("%d ops in the final graph." % len(output_graph_def.node))
-
-            print("Export Finished!")
-
             return None

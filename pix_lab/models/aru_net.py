@@ -13,13 +13,13 @@ def attCNN(input, channels, activation):
     :param activation:
     :return:
     """
-    with tf.variable_scope('attPart') as scope:
+    with tf.compat.v1.variable_scope('attPart') as scope:
         conv1 = layers.conv2d_bn_lrn_drop('conv1', input, [4, 4, channels, 12], activation=activation)
-        pool1 = tf.nn.max_pool(conv1, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='SAME', name='pool1')
+        pool1 = tf.nn.max_pool2d(conv1, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='SAME', name='pool1')
         conv2 = layers.conv2d_bn_lrn_drop('conv2', pool1, [4, 4, 12, 16], activation=activation)
-        pool2 = tf.nn.max_pool(conv2, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='SAME', name='pool2')
+        pool2 = tf.nn.max_pool2d(conv2, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='SAME', name='pool2')
         conv3 = layers.conv2d_bn_lrn_drop('conv3', pool2, [4, 4, 16, 32], activation=activation)
-        pool3 = tf.nn.max_pool(conv3, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='SAME', name='pool3')
+        pool3 = tf.nn.max_pool2d(conv3, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='SAME', name='pool3')
         out_DS = layers.conv2d_bn_lrn_drop('conv4', pool3, [4, 4, 32, 1], activation=activation)
     return out_DS
 
@@ -46,7 +46,7 @@ def detCNN(input, useResidual, useLSTM, channels, scale_space_num, res_depth, fe
     actFeatNum = featRoot
     dw_h_convs = OrderedDict()
     for layer in range(0, scale_space_num):
-        with tf.variable_scope('unet_down_' + str(layer)) as scope:
+        with tf.compat.v1.variable_scope('unet_down_' + str(layer)) as scope:
             if useResidual:
                 x = layers.conv2d_bn_lrn_drop('conv1', unetInp, [filter_size, filter_size, lastFeatNum, actFeatNum],
                                               activation=tf.identity)
@@ -68,7 +68,7 @@ def detCNN(input, useResidual, useLSTM, channels, scale_space_num, res_depth, fe
                 dw_h_convs[layer] = layers.conv2d_bn_lrn_drop('conv2', conv1, [filter_size, filter_size, actFeatNum,
                                     actFeatNum], activation=activation)
             if layer < scale_space_num - 1:
-                unetInp = tf.nn.max_pool(dw_h_convs[layer], ksizePool, stridePool, padding='SAME', name='pool')
+                unetInp = tf.nn.max_pool2d(dw_h_convs[layer], ksizePool, stridePool, padding='SAME', name='pool')
             else:
                 unetInp = dw_h_convs[layer]
             lastFeatNum=actFeatNum
@@ -78,7 +78,7 @@ def detCNN(input, useResidual, useLSTM, channels, scale_space_num, res_depth, fe
         # Run separable 2D LSTM
         unetInp = layers.separable_rnn(unetInp, lastFeatNum, scope="RNN2D", cellType='LSTM')
     for layer in range(scale_space_num - 2, -1, -1):
-        with tf.variable_scope('unet_up_' + str(layer)) as scope:
+        with tf.compat.v1.variable_scope('unet_up_' + str(layer)) as scope:
             # Upsampling followed by two ConvLayers
             dw_h_conv = dw_h_convs[layer]
             out_shape = tf.shape(dw_h_conv)
@@ -155,7 +155,7 @@ def create_aru_net(inp, channels, n_class, scale_space_num, res_depth,
     if useAttention:
         for sc in range(1, num_scales):
             inp_scale_map[sc] = tf.nn.avg_pool(inp_scale_map[sc-1], ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='SAME')
-    with tf.variable_scope('featMapG') as scope:
+    with tf.compat.v1.variable_scope('featMapG') as scope:
         out_0 = detCNN(inp,useResidual, useLSTM, channels, scale_space_num, res_depth,
                        featRoot, filter_size, pool_size, activation)
         out_det_map[0] = out_0
@@ -172,7 +172,7 @@ def create_aru_net(inp, channels, n_class, scale_space_num, res_depth,
     if useAttention:
         # Pay Attention
         out_att_map = OrderedDict()
-        with tf.variable_scope('attMapG') as scope:
+        with tf.compat.v1.variable_scope('attMapG') as scope:
             upSc = 8
             for sc in range(0, num_scales):
                 outAtt_O = attCNN(inp_scale_map[sc], channels, activation)
@@ -208,15 +208,15 @@ class ARUnet(object):
     """
 
     def __init__(self, channels=1, n_class=2, model_kwargs={}):
-        tf.reset_default_graph()
+        tf.compat.v1.reset_default_graph()
 
         self.n_class = n_class
         self.channels = channels
 
-        self.x = tf.placeholder("float", shape=[None, None, None, self.channels], name="inImg")
+        self.x = tf.compat.v1.placeholder("float", shape=[None, None, None, self.channels], name="inImg")
         # These are not used now
-        # self.keep_prob = tf.placeholder_with_default(1.0, [])
-        # self.is_training = tf.placeholder_with_default(tf.constant(False), [])
+        # self.keep_prob = tf.compat.v1.placeholder_with_default(1.0, [])
+        # self.is_training = tf.compat.v1.placeholder_with_default(tf.constant(False), [])
 
         self.scale_space_num = model_kwargs.get("scale_space_num", 6)
         self.res_depth = model_kwargs.get("res_depth", 3)

@@ -1,5 +1,5 @@
 from Queue import Queue
-import threading
+# import threading
 import os
 from random import uniform
 from random import shuffle
@@ -59,32 +59,52 @@ class Data_provider_la(object):
         self.dominating_channel = min(self.dominating_channel, n_classes-1)
         self.shuffle = kwargs_dat.get("shuffle", True)
 
-        self.threadNum = threadNum
         self.queueCapacity = queueCapacity
-        self.stopTrain = threading.Event()
-        self.stopVal = threading.Event()
         if path_list_train != None:
             self.list_train = read_image_list(path_list_train)
             self.size_train = len(self.list_train)
-            self.q_train, self.threads_tr = self._get_list_queue(self.list_train, self.threadNum, self.queueCapacity, self.stopTrain, self.batchsize_tr,
-                                                self.scale_min, self.scale_max, self.affine_tr, self.elastic_tr, self.rotate_tr, self.rotateMod90_tr)
+            self.q_train = self._get_list_queue(
+                self.list_train,
+                # self.threadNum,
+                self.queueCapacity,
+                # self.stopTrain,
+                self.batchsize_tr,
+                self.scale_min,
+                self.scale_max,
+                self.affine_tr,
+                self.elastic_tr,
+                self.rotate_tr,
+                self.rotateMod90_tr
+            )
         if path_list_val != None:
             self.list_val = read_image_list(path_list_val)
             if (self.max_val is not None) and (self.max_val < len(self.list_val)):
                 shuffle(self.list_val) 
                 self.list_val = list(sorted(self.list_val[:self.max_val]))
             self.size_val = len(self.list_val)
-            self.q_val, self.threads_val = self._get_list_queue(self.list_val, self.threadNum, self.queueCapacity, self.stopVal, self.batchsize_val, self.scale_val, self.scale_val, self.affine_val, self.elastic_val, self.rotate_val, self.rotateMod90_val)
+            self.q_val = self._get_list_queue(
+                self.list_val,
+                # self.threadNum,
+                self.queueCapacity,
+                # self.stopVal,
+                self.batchsize_val,
+                self.scale_val,
+                self.scale_val,
+                self.affine_val,
+                self.elastic_val,
+                self.rotate_val,
+                self.rotateMod90_val
+            )
 
-    def stop_all(self):
-        self.stopTrain.set()
-        self.stopVal.set()
+#     def stop_all(self):
+#         self.stopTrain.set()
+#         self.stopVal.set()
 
-    def restart_val_runner(self):
-        if self.list_val != None:
-            self.stopVal.set()
-            self.stopVal = threading.Event()
-            self.q_val, self.threads_val = self._get_list_queue(self.list_val, self.threadNum, self.queueCapacity, self.stopVal, self.batchsize_val, self.scale_val, self.scale_val, self.affine_val, self.elastic_val, self.rotate_val, self.rotateMod90_val)
+#     def restart_val_runner(self):
+#         if self.list_val != None:
+#             self.stopVal.set()
+#             self.stopVal = threading.Event()
+#             self.q_val, self.threads_val = self._get_list_queue(self.list_val, self.threadNum, self.queueCapacity, self.stopVal, self.batchsize_val, self.scale_val, self.scale_val, self.affine_val, self.elastic_val, self.rotate_val, self.rotateMod90_val)
 
     def next_data(self, list):
         if list is 'val':
@@ -93,44 +113,58 @@ class Data_provider_la(object):
             q = self.q_train
         if q is None:
             return None, None
-        # print("Val Q size: " + str(self.q_val.qsize()))
-        # print("Train Q size: " + str(self.q_train.qsize()))
+        print("Val Q size: " + str(self.q_val.qsize()))
+        print("Train Q size: " + str(self.q_train.qsize()))
         return q.get()
 
 
-    def _get_list_queue(self, aList, threadNum, queueCapacity, stopEvent, batch_size, min_scale, max_scale, affine, elastic, rotate, rotateMod90):
+    def _get_list_queue(
+        self,
+        aList,
+        # threadNum,
+        queueCapacity,
+        #stopEvent,
+        batch_size,
+        min_scale,
+        max_scale,
+        affine,
+        elastic,
+        rotate,
+        rotateMod90
+    ):
         q = Queue(maxsize=queueCapacity)
-        threads = []
-        for t in range(threadNum):
-            threads.append(
-                threading.Thread(
-                    target=self._fillQueue, 
-                    args=(
-                        q,
-                        aList[:], 
-                        stopEvent,
-                        batch_size,
-                        min_scale,
-                        max_scale,
-                        affine,
-                        elastic,
-                        rotate,
-                        rotateMod90,
-                    )
-                )
-            )
-        for t in threads:
-            t.start()
-        return q, threads
+#         threads = []
+#         for t in range(threadNum):
+#             threads.append(
+#                 threading.Thread(
+#                     target=
+        self._fillQueue(
+            q,
+            aList[:], 
+    #         stopEvent,
+            batch_size,
+            min_scale,
+            max_scale,
+            affine,
+            elastic,
+            rotate,
+            rotateMod90,
+        )
+        return q
+#                 )
+#             )
+#         for t in threads:
+#             t.start()
+#         return q, threads
 
 
-    def _fillQueue(self, q, aList, stopEvent, batch_size, min_scale, max_scale, affine, elastic, rotate, rotateMod90):
+
+    def _fillQueue(self, q, aList, batch_size, min_scale, max_scale, affine, elastic, rotate, rotateMod90):
         if self.shuffle:
             shuffle(aList)
         aIdx = 0
         curPair = None
         while (not stopEvent.is_set()):
-            # print('Queue filling step')
             if curPair is None:
                 imgs = []
                 imgsFin = []
@@ -139,7 +173,6 @@ class Data_provider_la(object):
                 maxH = 0
                 maxW = 0
                 while len(imgs) < batch_size:
-                    # print('Batch step len(imgs), batch_size', len(imgs), batch_size)
                     if aIdx == len(aList):
                         if self.shuffle:
                             shuffle(aList)
@@ -178,11 +211,9 @@ class Data_provider_la(object):
                         resizedMaps.append(
                             np.expand_dims(
                                 misc.imresize(maps[c], aScale, interp='bicubic'),
-                                2
-                            )
-                        )
+                                2))
                     res = np.dstack(resizedMaps)
-                    print('Loaded resized maps shape:', res.shape)
+
                     if affine:
                         res = affine_transform(res, self.affine_value)
                     if elastic:
@@ -255,11 +286,9 @@ class Data_provider_la(object):
                 bT = np.concatenate(tgtsFin)
                 curPair = [bX, bT]
             try:
-                # print('Puttong to QUEUE, aIdx', aIdx, type(bX), type(bT))
+                print('Putting to queue', aIdx)
                 q.put(curPair)
                 curPair = None
                 aIdx += 1
-                # print('Puttong to QUEUE done, aIdx', aIdx)
-            except Exception as e:
-                # print('Puttong to QEUE failed', e)
+            except:
                 continue

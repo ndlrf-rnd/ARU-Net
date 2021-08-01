@@ -1,0 +1,7 @@
+logs/*
+.log
+output/*
+input/*
+models/*
+.ipynb_checkpoints
+*.pyc

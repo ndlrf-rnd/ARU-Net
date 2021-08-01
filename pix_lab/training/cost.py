@@ -35,9 +35,18 @@ def get_cost(logits, tgt, kwargs={}):
             flat_labels = tf.reshape(tgt, [-1, n_class])
             weight_map = tf.multiply(flat_labels, class_weights_tf)
             weight_map = tf.reduce_sum(weight_map, axis=1)
+                # WARNING:tensorflow:From /home/vvasin/ikutukov/ARU-Net/pix_lab/training/cost.py:49: softmax_cross_entropy_with_logits (from tensorflow.python.ops.nn_ops) is deprecated and will be removed in a future version.
+                # Instructions for updating:
 
-            loss_map = tf.nn.softmax_cross_entropy_with_logits(logits=flat_logits,
-                                                               labels=flat_labels)
+                # Future major versions of TensorFlow will allow gradients to flow
+                # into the labels input on backprop by default.
+
+                # See `tf.nn.softmax_cross_entropy_with_logits_v2`
+            # loss_map = tf.nn.softmax_cross_entropy_with_logits(
+            loss_map = tf.nn.softmax_cross_entropy_with_logits_v2(
+                logits=flat_logits,
+                labels=flat_labels
+            )
             weighted_loss = tf.multiply(loss_map, weight_map)
 
             loss = tf.reduce_mean(weighted_loss)
@@ -45,8 +54,13 @@ def get_cost(logits, tgt, kwargs={}):
         else:
             flat_logits = tf.reshape(logits, [-1, n_class])
             flat_labels = tf.reshape(tgt, [-1, n_class])
-            loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=flat_logits,
-                                                                         labels=flat_labels))
+            loss = tf.reduce_mean(
+                # tf.nn.softmax_cross_entropy_with_logits(
+                tf.nn.softmax_cross_entropy_with_logits_v2(
+                    logits=flat_logits,
+                    labels=flat_labels
+                )
+            )
     elif cost_name is "dice":
         igore_last_channel = kwargs.get("igore_last_channel", True)
         eps = 1e-5

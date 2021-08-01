@@ -1,13 +1,12 @@
 from __future__ import print_function, division
 
 import time
-
-import matplotlib.pyplot as plt
+import os
 import tensorflow as tf
 import numpy as np
 from scipy import misc
 from pix_lab.util.util import load_graph
-
+from PIL import Image, ImageOps
 class Inference_pb(object):
     """
         Perform inference for an arunet instance
@@ -15,11 +14,17 @@ class Inference_pb(object):
         :param net: the arunet instance to train
 
         """
-    def __init__(self, path_to_pb, img_list, scale=0.33, mode='L'):
+    def __init__(self, path_to_pb, img_list, scale=1.0, mode='L', output_dir='output/'):
         self.graph = load_graph(path_to_pb)
         self.img_list = img_list
         self.scale = scale
         self.mode = mode
+        self.output_dir = os.path.abspath(output_dir)
+        try:
+            if not os.path.exists(self.output_dir):
+                os.makedirs(self.output_dir)
+        except Exception as e:
+            print('Failed to create output dir:', self.output_dir, 'due error:', e)
 
     def inference(self, print_result=True, gpu_device="0"):
         val_size = len(self.img_list)
@@ -28,7 +33,11 @@ class Inference_pb(object):
             return
         session_conf = tf.ConfigProto()
         session_conf.gpu_options.visible_device_list = gpu_device
+        
         with tf.Session(graph=self.graph, config=session_conf) as sess:
+            
+            # FIXME: move debug below to TF logs
+            # print('Tensors:', [tensor.name for tensor in tf.get_default_graph().as_graph_def().node])
             x = self.graph.get_tensor_by_name('inImg:0')
             predictor = self.graph.get_tensor_by_name('output:0')
             print("Start Inference")
@@ -51,22 +60,15 @@ class Inference_pb(object):
                 if print_result:
                     n_class = aPred.shape[3]
                     channels = batch_x.shape[3]
-                    fig = plt.figure()
-                    for aI in range(0, n_class+1):
-                        if aI == 0:
-                            a = fig.add_subplot(1, n_class+1, 1)
-                            if channels == 1:
-                                plt.imshow(batch_x[0, :, :, 0], cmap=plt.cm.gray)
-                            else:
-                                plt.imshow(batch_x[0, :, :, :])
-                            a.set_title('input')
-                        else:
-                            a = fig.add_subplot(1, n_class+1, aI+1)
-                            plt.imshow(aPred[0,:, :,aI-1], cmap=plt.cm.gray, vmin=0.0, vmax=1.0)
-                            # misc.imsave('out' + str(aI) + '.jpg', aPred[0,:, :,aI-1])
-                            a.set_title('Channel: ' + str(aI-1))
-                    print('To go on just CLOSE the current plot.')
-                    plt.show()
+                    for aI in range(0, n_class):
+                        out_path = os.path.join(self.output_dir, str(step) + '-' + str(aI ) + '.png')
+                        img = Image.fromarray((aPred[0,:, :,aI]  * 255).astype('uint8'), 'L')
+                        img.save(out_path)
+
+                    out_path = os.path.join(self.output_dir, str(step) + '.png')
+                    img = Image.fromarray((batch_x[0, :, :, :].mean(axis=2)  * 255).astype('uint8'), 'L')
+                    img = ImageOps.invert(img)
+                    img.save(out_path)
             self.output_epoch_stats_val(timeSum/val_size)
 
             print("Inference Finished!")
