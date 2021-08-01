@@ -1,9 +1,12 @@
 from __future__ import print_function, division
 
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
+tf.disable_eager_execution()
+
 from pix_lab.util import layers
 from collections import OrderedDict
 import logging
+
 
 def attCNN(input, channels, activation):
     """
@@ -13,7 +16,7 @@ def attCNN(input, channels, activation):
     :param activation:
     :return:
     """
-    with tf.compat.v1.variable_scope('attPart') as scope:
+    with tf.variable_scope('attPart') as scope:
         conv1 = layers.conv2d_bn_lrn_drop('conv1', input, [4, 4, channels, 12], activation=activation)
         pool1 = tf.nn.max_pool2d(conv1, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='SAME', name='pool1')
         conv2 = layers.conv2d_bn_lrn_drop('conv2', pool1, [4, 4, 12, 16], activation=activation)
@@ -46,64 +49,67 @@ def detCNN(input, useResidual, useLSTM, channels, scale_space_num, res_depth, fe
     actFeatNum = featRoot
     dw_h_convs = OrderedDict()
     for layer in range(0, scale_space_num):
-        with tf.compat.v1.variable_scope('unet_down_' + str(layer)) as scope:
+        with tf.variable_scope('unet_down_' + str(layer)) as scope:
             if useResidual:
-                x = layers.conv2d_bn_lrn_drop('conv1', unetInp, [filter_size, filter_size, lastFeatNum, actFeatNum],
-                                              activation=tf.identity)
+                x = layers.conv2d_bn_lrn_drop('conv1', unetInp, [filter_size, filter_size, int(lastFeatNum), int(actFeatNum)], activation=tf.identity)
                 orig_x = x
                 x = tf.nn.relu(x, name='activation')
                 for aRes in range(0,res_depth):
                     if aRes < res_depth-1:
-                        x = layers.conv2d_bn_lrn_drop('convR_' + str(aRes), x, [filter_size, filter_size, actFeatNum,
-                                    actFeatNum], activation=activation)
+                        x = layers.conv2d_bn_lrn_drop('convR_' + str(aRes), x, [filter_size, filter_size, int(actFeatNum), int(actFeatNum)], activation=activation)
                     else:
-                        x = layers.conv2d_bn_lrn_drop('convR_' + str(aRes), x, [filter_size, filter_size, actFeatNum,
-                                    actFeatNum], activation=tf.identity)
+                        x = layers.conv2d_bn_lrn_drop('convR_' + str(aRes), x, [filter_size, filter_size, int(actFeatNum), int(actFeatNum)], activation=tf.identity)
                 x += orig_x
                 x = activation(x, name='activation')
                 dw_h_convs[layer] = x
             else:
-                conv1 = layers.conv2d_bn_lrn_drop('conv1', unetInp, [filter_size, filter_size, lastFeatNum, actFeatNum],
-                                                  activation=activation)
-                dw_h_convs[layer] = layers.conv2d_bn_lrn_drop('conv2', conv1, [filter_size, filter_size, actFeatNum,
-                                    actFeatNum], activation=activation)
+                conv1 = layers.conv2d_bn_lrn_drop('conv1', unetInp, [filter_size, filter_size, int(lastFeatNum), int(actFeatNum)], activation=activation)
+                dw_h_convs[layer] = layers.conv2d_bn_lrn_drop('conv2', conv1, [filter_size, filter_size, int(actFeatNum), int(actFeatNum)], activation=activation)
             if layer < scale_space_num - 1:
                 unetInp = tf.nn.max_pool2d(dw_h_convs[layer], ksizePool, stridePool, padding='SAME', name='pool')
             else:
                 unetInp = dw_h_convs[layer]
             lastFeatNum=actFeatNum
             actFeatNum *= pool_size
-    actFeatNum = lastFeatNum/pool_size
+    actFeatNum = lastFeatNum / pool_size
+    
     if useLSTM:
         # Run separable 2D LSTM
         unetInp = layers.separable_rnn(unetInp, lastFeatNum, scope="RNN2D", cellType='LSTM')
     for layer in range(scale_space_num - 2, -1, -1):
-        with tf.compat.v1.variable_scope('unet_up_' + str(layer)) as scope:
+        with tf.variable_scope('unet_up_' + str(layer)) as scope:
             # Upsampling followed by two ConvLayers
             dw_h_conv = dw_h_convs[layer]
             out_shape = tf.shape(dw_h_conv)
-            deconv = layers.deconv2d_bn_lrn_drop('deconv', unetInp, [filter_size, filter_size, actFeatNum,lastFeatNum],
-                            out_shape, pool_size, activation=activation)
+            print('unetInp', unetInp)
+            print('[filter_size, filter_size, actFeatNum,lastFeatNum]', [filter_size, filter_size, int(actFeatNum), int(lastFeatNum)])
+            print('out_shape', out_shape)
+            print('pool_size', pool_size)
+            
+#             out_shape Tensor("featMapG/unet_up_4/Shape:0", shape=(4,), dtype=int32)
+            deconv = layers.deconv2d_bn_lrn_drop(
+                'deconv',
+                unetInp,
+                [filter_size, filter_size, int(actFeatNum), int(lastFeatNum)],
+                out_shape,
+                pool_size,
+                activation=activation
+            )
             conc = tf.concat([dw_h_conv, deconv], 3, name='concat')
             if useResidual:
-                x = layers.conv2d_bn_lrn_drop('conv1', conc, [filter_size, filter_size, pool_size*actFeatNum,
-                                    actFeatNum], activation=tf.identity)
+                x = layers.conv2d_bn_lrn_drop('conv1', conc, [filter_size, filter_size, int(pool_size*actFeatNum), int(actFeatNum)], activation=tf.identity)
                 orig_x = x
                 x = tf.nn.relu(x, name='activation')
                 for aRes in range(0,res_depth):
                     if aRes < res_depth-1:
-                        x = layers.conv2d_bn_lrn_drop('convR_' + str(aRes), x, [filter_size, filter_size, actFeatNum,
-                                    actFeatNum], activation=activation)
+                        x = layers.conv2d_bn_lrn_drop('convR_' + str(aRes), x, [filter_size, filter_size, int(actFeatNum), int(actFeatNum)], activation=activation)
                     else:
-                        x = layers.conv2d_bn_lrn_drop('convR_' + str(aRes), x, [filter_size, filter_size, actFeatNum,
-                                    actFeatNum], activation=tf.identity)
+                        x = layers.conv2d_bn_lrn_drop('convR_' + str(aRes), x, [filter_size, filter_size, int(actFeatNum), int(actFeatNum)], activation=tf.identity)
                 x += orig_x
                 unetInp = activation(x, name='activation')
             else:
-                conv1 = layers.conv2d_bn_lrn_drop('conv1', conc, [filter_size, filter_size, pool_size * actFeatNum,
-                                    actFeatNum], activation=activation)
-                unetInp = layers.conv2d_bn_lrn_drop('conv2', conv1, [filter_size, filter_size, actFeatNum, actFeatNum],
-                                                activation=activation)
+                conv1 = layers.conv2d_bn_lrn_drop('conv1', conc, [filter_size, filter_size, int(pool_size * actFeatNum), int(actFeatNum)], activation=activation)
+                unetInp = layers.conv2d_bn_lrn_drop('conv2', conv1, [filter_size, filter_size, int(actFeatNum), int(actFeatNum)], activation=activation)
             lastFeatNum=actFeatNum
             actFeatNum /= pool_size
     return unetInp
@@ -155,7 +161,7 @@ def create_aru_net(inp, channels, n_class, scale_space_num, res_depth,
     if useAttention:
         for sc in range(1, num_scales):
             inp_scale_map[sc] = tf.nn.avg_pool(inp_scale_map[sc-1], ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='SAME')
-    with tf.compat.v1.variable_scope('featMapG') as scope:
+    with tf.variable_scope('featMapG') as scope:
         out_0 = detCNN(inp,useResidual, useLSTM, channels, scale_space_num, res_depth,
                        featRoot, filter_size, pool_size, activation)
         out_det_map[0] = out_0
@@ -172,7 +178,7 @@ def create_aru_net(inp, channels, n_class, scale_space_num, res_depth,
     if useAttention:
         # Pay Attention
         out_att_map = OrderedDict()
-        with tf.compat.v1.variable_scope('attMapG') as scope:
+        with tf.variable_scope('attMapG') as scope:
             upSc = 8
             for sc in range(0, num_scales):
                 outAtt_O = attCNN(inp_scale_map[sc], channels, activation)
@@ -208,15 +214,15 @@ class ARUnet(object):
     """
 
     def __init__(self, channels=1, n_class=2, model_kwargs={}):
-        tf.compat.v1.reset_default_graph()
+        tf.reset_default_graph()
 
         self.n_class = n_class
         self.channels = channels
 
-        self.x = tf.compat.v1.placeholder("float", shape=[None, None, None, self.channels], name="inImg")
+        self.x = tf.placeholder("float", shape=[None, None, None, self.channels], name="inImg")
         # These are not used now
-        # self.keep_prob = tf.compat.v1.placeholder_with_default(1.0, [])
-        # self.is_training = tf.compat.v1.placeholder_with_default(tf.constant(False), [])
+        # self.keep_prob = tf.placeholder_with_default(1.0, [])
+        # self.is_training = tf.placeholder_with_default(tf.constant(False), [])
 
         self.scale_space_num = model_kwargs.get("scale_space_num", 6)
         self.res_depth = model_kwargs.get("res_depth", 3)

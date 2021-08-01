@@ -3,7 +3,7 @@ from __future__ import print_function, division
 import time
 
 import matplotlib.pyplot as plt
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 
 from pix_lab.training.cost import get_cost
 

@@ -5,12 +5,14 @@ import os
 import re
 
 import tqdm
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 
-from cost import get_cost
-from optimizer import get_optimizer
+from .cost import get_cost
+from .optimizer import get_optimizer
 from tensorflow.python.client import device_lib
 from tensorflow.python.framework import graph_util
+from tensorflow_large_model_support import LMS
+
 # from callbacks import CudaProfileCallback, LMSStatsLogger, LMSStatsAverage
 
 
@@ -123,9 +125,12 @@ class Trainer(object):
         :param max_spat_dim:
         :return:
         """
+        
         print("Epochs: " + str(epochs))
         print("Batch Size Train: " + str(data_provider.batchsize_tr))
         print("Batchsteps per Epoc " + str(batch_steps_per_epoch))
+        lms_hook = LMS()
+        
         if not output_folder is None:
             checkpoint_path = os.path.join(output_folder, "model")
             
@@ -210,8 +215,8 @@ class Trainer(object):
                                 print("Spatial Dimension of Training Data to high. Aborting.")
                                 return checkpoint_path
                         # Run training
-#                         global_step = ( epoch + 1 ) * batch_steps_per_epoch + step
-                        print('Running session', batch_x.shape, batch_tgt.shape, epoch)
+                        # global_step = ( epoch + 1 ) * batch_steps_per_epoch + step
+                        # print('Running session', batch_x.shape, batch_tgt.shape, epoch)
                         _, loss, lr = sess.run(
                             [self.optimizer, self.cost, self.learning_rate_node],
                             feed_dict={
@@ -273,7 +278,10 @@ class Trainer(object):
                                 feed_dict={
                                     self.net.x: batch_x,
                                     self.tgt: batch_tgt
-                                }
+                                },
+                                hooks=[
+                                    lms_hook,
+                                ]
                             )
                             if self.cost_type is "cross_entropy_sum":
                                 sh = batch_x.shape

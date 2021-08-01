@@ -1,7 +1,7 @@
 from __future__ import print_function, division
 
 
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 from tensorflow.python.framework import graph_util
 
 def export_graph(sess, export_name, output_nodes=['output']):

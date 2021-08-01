@@ -2,7 +2,7 @@ from __future__ import print_function, division
 
 import time
 import os
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 import numpy as np
 from scipy import misc
 from pix_lab.util.util import load_graph

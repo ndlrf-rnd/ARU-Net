@@ -5,7 +5,7 @@ export ROOT_DIR="/home/vvasin/ikutukov/ARU-Net"
 
 export DATA_DIR="/home/vvasin/ikutukov/text-baselines"
 
-for dataset in ${DATA_DIR}/train/*; do
+for dataset in ${DATA_DIR}/train/newseye-*; do
     model="bd-$(basename ${dataset})-300dpi-256x10st"
     echo "Dataset: ${dataset}"
     echo "Model name: ${model}"

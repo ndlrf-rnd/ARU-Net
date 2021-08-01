@@ -1,4 +1,4 @@
-from Queue import Queue
+from multiprocessing import Queue
 import threading
 import os
 from random import uniform
@@ -149,6 +149,7 @@ class Data_provider_la(object):
                     maps = []
                     imgChannels = 0
                     tgtChannels = self.n_classes
+                    print('Data provider loading:', path)
                     aImg = misc.imread(path, 'RGB')
                     if len(aImg.shape) == 2:
                         maps.append(aImg)
@@ -182,7 +183,7 @@ class Data_provider_la(object):
                             )
                         )
                     res = np.dstack(resizedMaps)
-                    print('Loaded resized maps shape:', res.shape)
+                    # print('Loaded resized maps shape:', res.shape)
                     if affine:
                         res = affine_transform(res, self.affine_value)
                     if elastic:

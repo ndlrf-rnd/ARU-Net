@@ -1,9 +1,10 @@
 import numpy as np
-import tensorflow as tf
-from tensorflow.contrib.layers import batch_norm
-from tensorflow.contrib.rnn import DropoutWrapper
-from tensorflow.contrib.rnn import LSTMCell
-from tensorflow.contrib.rnn import GRUCell
+import tensorflow.compat.v1 as tf
+
+from tensorflow.compat.v1.layers import batch_normalization
+from tensorflow.compat.v1.nn.rnn_cell import DropoutWrapper
+from tensorflow.compat.v1.nn.rnn_cell import LSTMCell
+from tensorflow.compat.v1.nn.rnn_cell import GRUCell
 
 def conv2d_bn_lrn_drop(scope_or_name,
                        inputs,
@@ -37,18 +38,24 @@ def conv2d_bn_lrn_drop(scope_or_name,
     Returns:
         `4-D Tensor`, has the same type `inputs`.
     """
-    with tf.compat.v1.variable_scope(scope_or_name):
+    with tf.variable_scope(scope_or_name):
         if initOpt == 0:
             stddev = np.sqrt(2.0 / (kernel_shape[0] * kernel_shape[1] * kernel_shape[2] + kernel_shape[3]))
         if initOpt == 1:
             stddev = 5e-2
         if initOpt == 2:
             stddev = min(np.sqrt(2.0 / (kernel_shape[0] * kernel_shape[1] * kernel_shape[2])),5e-2)
-        kernel = tf.compat.v1.get_variable("weights", kernel_shape,
-                                  initializer=tf.random_normal_initializer(stddev=stddev))
+        kernel = tf.get_variable(
+            "weights",
+            kernel_shape,
+            initializer=tf.random_normal_initializer(stddev=stddev)
+        )
         conv = tf.nn.conv2d(inputs, kernel, strides, padding='SAME', name='conv')
-        bias = tf.compat.v1.get_variable("bias", kernel_shape[3],
-                                 initializer=tf.constant_initializer(value=biasInit))
+        bias = tf.get_variable(
+            "bias",
+            kernel_shape[3],
+            initializer=tf.constant_initializer(value=biasInit)
+        )
         outputs = tf.nn.bias_add(conv, bias, name='preActivation')
         if use_bn:
             # outputs = tf.layers.batch_normalization(outputs, axis=3, training=is_training, name="batchNorm")
@@ -99,17 +106,17 @@ def dil_conv2d_bn_lrn_drop(scope_or_name,
     Returns:
         `4-D Tensor`, has the same type `inputs`.
     """
-    with tf.compat.v1.variable_scope(scope_or_name):
+    with tf.variable_scope(scope_or_name):
         if initOpt == 0:
             stddev = np.sqrt(2.0 / (kernel_shape[0] * kernel_shape[1] * kernel_shape[2] + kernel_shape[3]))
         if initOpt == 1:
             stddev = 5e-2
         if initOpt == 2:
             stddev = min(np.sqrt(2.0 / (kernel_shape[0] * kernel_shape[1] * kernel_shape[2])),5e-2)
-        kernel = tf.compat.v1.get_variable("weights", kernel_shape,
+        kernel = tf.get_variable("weights", kernel_shape,
                                  initializer=tf.random_normal_initializer(stddev=stddev))
         conv = tf.nn.atrous_conv2d(inputs, kernel, rate=rate, padding='SAME')
-        bias = tf.compat.v1.get_variable("bias", kernel_shape[3],
+        bias = tf.get_variable("bias", kernel_shape[3],
                                initializer=tf.constant_initializer(value=0.1))
         outputs = tf.nn.bias_add(conv, bias, name='preActivation')
         if use_bn:
@@ -139,16 +146,16 @@ def deconv2d_bn_lrn_drop(scope_or_name, inputs, kernel_shape, out_shape, subS=2,
                        keep_prob=1.0,
                        dropout_maps=False,
                        initOpt=0):
-    with tf.compat.v1.variable_scope(scope_or_name):
+    with tf.variable_scope(scope_or_name):
         if initOpt == 0:
             stddev = np.sqrt(2.0 / (kernel_shape[0] * kernel_shape[1] * kernel_shape[2] + kernel_shape[3]))
         if initOpt == 1:
             stddev = 5e-2
         if initOpt == 2:
             stddev = min(np.sqrt(2.0 / (kernel_shape[0] * kernel_shape[1] * kernel_shape[2])),5e-2)
-        kernel = tf.compat.v1.get_variable("weights", kernel_shape,
+        kernel = tf.get_variable("weights", kernel_shape,
                                  initializer=tf.random_normal_initializer(stddev=stddev))
-        bias = tf.compat.v1.get_variable("bias", kernel_shape[2],
+        bias = tf.get_variable("bias", kernel_shape[2],
                                initializer=tf.constant_initializer(value=0.1))
         conv=tf.nn.conv2d_transpose(inputs, kernel, out_shape, strides=[1, subS, subS, 1], padding='SAME', name='conv')
         outputs = tf.nn.bias_add(conv, bias, name='preActivation')
@@ -182,8 +189,8 @@ def upsample_simple(images, shape_out, up, numClasses):
 
 
 def feat_norm(input, dimZ):
-    beta = tf.compat.v1.get_variable('beta', shape=(dimZ,), initializer=tf.constant_initializer(value=0.0))
-    gamma = tf.compat.v1.get_variable('gamma', shape=(dimZ,), initializer=tf.constant_initializer(value=1.0))
+    beta = tf.get_variable('beta', shape=(dimZ,), initializer=tf.constant_initializer(value=0.0))
+    gamma = tf.get_variable('gamma', shape=(dimZ,), initializer=tf.constant_initializer(value=1.0))
     output,_, _ = tf.nn.fused_batch_norm(input, gamma, beta)
     return output
 
@@ -200,8 +207,8 @@ def separable_rnn(images, num_filters_out, scope=None, keep_prob=1.0, cellType='
   Returns:
     (num_images, height, width, num_filters_out) tensor
   """
-  with tf.compat.v1.variable_scope(scope, "SeparableLstm", [images]):
-    with tf.compat.v1.variable_scope("horizontal"):
+  with tf.variable_scope(scope, "SeparableLstm", [images]):
+    with tf.variable_scope("horizontal"):
       if 'LSTM' in cellType:
         cell_fw = LSTMCell(num_filters_out, use_peepholes=True, state_is_tuple=True)
         cell_bw = LSTMCell(num_filters_out, use_peepholes=True, state_is_tuple=True)
@@ -209,7 +216,7 @@ def separable_rnn(images, num_filters_out, scope=None, keep_prob=1.0, cellType='
         cell_fw = GRUCell(num_filters_out)
         cell_bw = GRUCell(num_filters_out)
       hidden = horizontal_cell(images, num_filters_out, cell_fw, cell_bw, keep_prob=keep_prob, scope=scope)
-    with tf.compat.v1.variable_scope("vertical"):
+    with tf.variable_scope("vertical"):
       transposed = tf.transpose(hidden, [0, 2, 1, 3])
       if 'LSTM' in cellType:
         cell_fw = LSTMCell(num_filters_out, use_peepholes=True, state_is_tuple=True)
@@ -233,7 +240,7 @@ def horizontal_cell(images, num_filters_out, cell_fw, cell_bw, keep_prob=1.0, sc
   Returns:
     (num_images, height, width, num_filters_out) tensor, where
   """
-  with tf.compat.v1.variable_scope(scope, "HorizontalGru", [images]):
+  with tf.variable_scope(scope, "HorizontalGru", [images]):
     sequence = images_to_sequence(images)
 
     shapeT = tf.shape(sequence)
