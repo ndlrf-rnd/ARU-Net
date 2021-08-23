@@ -1,6 +1,8 @@
 from __future__ import print_function, division
 
 import tensorflow.compat.v1 as tf
+import tensorflow as tf2
+
 tf.disable_eager_execution()
 
 from pix_lab.util import layers
@@ -81,10 +83,11 @@ def detCNN(input, useResidual, useLSTM, channels, scale_space_num, res_depth, fe
             # Upsampling followed by two ConvLayers
             dw_h_conv = dw_h_convs[layer]
             out_shape = tf.shape(dw_h_conv)
-            print('unetInp', unetInp)
-            print('[filter_size, filter_size, actFeatNum,lastFeatNum]', [filter_size, filter_size, int(actFeatNum), int(lastFeatNum)])
-            print('out_shape', out_shape)
-            print('pool_size', pool_size)
+            # FixMe: Remove debug code:
+            # print('unetInp', unetInp)
+            # print('[filter_size, filter_size, actFeatNum,lastFeatNum]', [filter_size, filter_size, int(actFeatNum), int(lastFeatNum)])
+            # print('out_shape', out_shape)
+            # print('pool_size', pool_size)
             
 #             out_shape Tensor("featMapG/unet_up_4/Shape:0", shape=(4,), dtype=int32)
             deconv = layers.deconv2d_bn_lrn_drop(
@@ -237,10 +240,12 @@ class ARUnet(object):
         self.model = model_kwargs.get("model", "aru")
         self.num_scales = model_kwargs.get("num_scales", 5)
         self.final_act = model_kwargs.get("final_act", "softmax")
-        print("Model Type: " + self.model)
-        logits = create_aru_net(self.x, self.channels, self.n_class, self.scale_space_num, self.res_depth,
-                                self.featRoot, self.filter_size, self.pool_size, self.activation, self.model,
-                                self.num_scales)
+        print("Model type/sub-type: {}".format(self.model))
+        logits = create_aru_net(
+            self.x, self.channels, self.n_class, self.scale_space_num, self.res_depth,
+            self.featRoot, self.filter_size, self.pool_size, self.activation, self.model,
+            self.num_scales
+        ) 
         self.logits = tf.identity(logits, 'logits')
         if self.final_act is "softmax":
             self.predictor = tf.nn.softmax(self.logits, name='output')
@@ -275,4 +280,4 @@ class ARUnet(object):
         else:
             saver = tf.train.Saver(var_list=var_dict)
         saver.restore(sess, model_path)
-        print("Model restored from file: %s" % model_path)
+        print("Model restored from file: {}".format(model_path))

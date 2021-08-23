@@ -1,84 +1,47 @@
-set -ex
+set -e
+
+export STEPS="${STEPS:-256}"
+export EPOCHS="${EPOCHS:-20}"
+
 export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/home/vvasin/miniconda3/pkgs/cudatoolkit-10.0.130-0/lib"
 
-export ROOT_DIR="/home/vvasin/ikutukov/ARU-Net"
+export MODEL_NAME='aru'
+export COST_NAME='cross_entropy'
+export OPTIMIZER_NAME='rmsprop'
 
-export DATA_DIR="/home/vvasin/ikutukov/text-baselines"
+export SEED=${SEED:-13}
+export TASK_NAME=${TASK_NAME:-'bd'}
 
-for dataset in ${DATA_DIR}/train/newseye-*; do
-    model="bd-$(basename ${dataset})-300dpi-256x10st"
-    echo "Dataset: ${dataset}"
-    echo "Model name: ${model}"
+for DATASET_TRAIN_DIR in ../$TASK_NAME/train/**; do
+    DATASET_NAME="$(basename ${DATASET_TRAIN_DIR})"
+    MODEL_DIR_NAME="${MODEL_NAME}-${COST_NAME}-${OPTIMIZER_NAME}-${TASK_NAME}-${DATASET_NAME}"
+    MODEL_PATH="./models/${MODEL_DIR_NAME}/"
+
+    echo "Model"
+    echo "  - path: ${MODEL_DIR_NAME} (${MODEL_PATH})"
+    echo "  - epochs: ${EPOCHS}"
+    echo "  - task: ${TASK_NAME}"
+    echo "Dataset: ${DATASET_TRAIN_DIR}"
+#     echo "  - TRAIN: ${DATASET_TRAIN_DIR}"
+#     echo "  - TEST: ${DATA_VAL_GLOB}"
     
-    if [[ ! -f "${ROOT_DIR}/models/${model}/model10.index" ]]; then
+    if [[ ! -f "${MODEL_PATH}/model-${EPOCHS}.index" ]]; then
       python -u pix_lab/main/train_aru.py \
-        --path_list_train "${dataset}/*.jpeg" \
-        --path_list_val "${DATA_DIR}/train/**/*.jpeg" \
-        --output_folder "${ROOT_DIR}/models/${model}/" \
-        --restore_path "${ROOT_DIR}/models/${model}/" \
-        --thread_num 1 \
-        --queue_capacity 1 \
-        --steps_per_epoch 256 \
-        --epochs 10 \
-        --max_val 256 \
-        --scale_min 0.2 \
-        --scale_max 0.4 \
-        --scale_val 0.33 \
-        --seed 13 \
-        --gpu_device 0
-    else
-	    echo "Model already exists"
+        --path_list "${DATASET_TRAIN_DIR}/*.jp*g" \
+        --output_folder "${MODEL_PATH}" \
+        --restore_path "${MODEL_PATH}/" \
+        --model_name "${MODEL_NAME}" \
+        --cost_name "${COST_NAME}" \
+        --optimizer_name "${OPTIMIZER_NAME}" \
+        --queue_capacity 32 \
+        --steps_per_epoch "${STEPS}" \
+        --epochs ${EPOCHS} \
+        --scale_min 0.33 \
+        --scale_max 1.0 \
+        --seed "${SEED}" \
+        --max_pixels 4000000 \
+        --gpu_device 0 \
+        --image2tb_every_step 10
     fi
 
 done
-
-
-
-
-# python -u pix_lab/main/train_aru.py \
-# 	--path_list_train '/home/vvasin/ikutukov/text-baselines/train/cbad-2017-*/*.jpeg' \
-# 	--path_list_val '/home/vvasin/ikutukov/text-baselines/test/**/*.jpeg' \
-# 	--output_folder '${ROOT_DIR}/models/aru-net-cbad-2017-2560x10/' \
-# 	--restore_path '${ROOT_DIR}/models/aru-net-cbad-2017-2560x10/' \
-# 	--thread_num 4 \
-# 	--queue_capacity 128 \
-# 	--steps_per_epoch 512 \
-# 	--epochs 100 \
-# 	--max_val 256 \
-# 	--scale_min 0.4 \
-# 	--scale_max 1.0 \
-# 	--scale_val 0.66 \
-# 	--seed 13
-# # 	216 + 249
-
-# python -u pix_lab/main/train_aru.py \
-# 	--path_list_train '/home/vvasin/ikutukov/text-baselines/train/bozen-2016/*.jpeg' \
-# 	--path_list_val '/home/vvasin/ikutukov/text-baselines/test/**/*.jpeg' \
-# 	--output_folder '${ROOT_DIR}/models/aru-net-bozen-2016-2560x10/' \
-# 	--restore_path '${ROOT_DIR}/models/aru-net-bozen-2016-2560x10/' \
-# 	--thread_num 4 \
-# 	--queue_capacity 128 \
-# 	--steps_per_epoch 512 \
-# 	--epochs 100 \
-# 	--max_val 256 \
-# 	--scale_min 0.4 \
-# 	--scale_max 1.0 \
-# 	--scale_val 0.66 \
-# 	--seed 13
-# # 350
-
-# python -u pix_lab/main/train_aru.py \
-# 	--path_list_train '/home/vvasin/ikutukov/text-baselines/train/cbad-2019/*.jpeg' \
-# 	--path_list_val '/home/vvasin/ikutukov/text-baselines/test/**/*.jpeg' \
-# 	--output_folder '${ROOT_DIR}/models/aru-net-cbad-2019-2560x10/' \
-# 	--restore_path '${ROOT_DIR}/models/aru-net-cbad-2019-2560x10/' \
-# 	--thread_num 4 \
-# 	--queue_capacity 128 \
-# 	--steps_per_epoch 512 \
-# 	--epochs 100 \
-# 	--max_val 256 \
-# 	--scale_min 0.4 \
-# 	--scale_max 1.0 \
-# 	--scale_val 0.66 \
-# 	--seed 13
-# # 736

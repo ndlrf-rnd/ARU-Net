@@ -5,16 +5,16 @@ import tensorflow.compat.v1 as tf
 from tensorflow.python.framework import graph_util
 
 def export_graph(sess, export_name, output_nodes=['output']):
-    graph = tf.get_default_graph()
+    graph = tf.compat.v1.get_default_graph()
     input_graph_def = graph.as_graph_def()
 
-    output_graph_def = graph_util.convert_variables_to_constants(
+    output_graph_def = tf.compat.v1.graph_util.convert_variables_to_constants(
         sess,  # The session is used to retrieve the weights
         input_graph_def,  # The graph_def is used to retrieve the nodes
         output_nodes  # The output node names are used to select the usefull nodes
     )
     # Finally we serialize and dump the output graph to the filesystem
-    with tf.gfile.GFile(export_name, "wb") as f:
+    with tf.compat.v1.gfile.GFile(export_name, "wb") as f:
         f.write(output_graph_def.SerializeToString())
     print("%d ops in the final graph." % len(output_graph_def.node))
 

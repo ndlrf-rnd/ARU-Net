@@ -6,80 +6,136 @@ from pix_lab.models.aru_net import ARUnet
 from pix_lab.data_provider.data_provider_la import Data_provider_la
 from pix_lab.training.trainer import Trainer
 
+MODEL_TYPE_HELP = '''
+* u - (U-Net). Vanilla U-Net architecture.'
+* ru - (RU-Net). An RU-Net is an U-Net with residual blocks. That means, each of the 2 layer CNN blocks in replaced by a residual block.'
+* aru (ARU-Net). An RU-Net incorporating the described spatial attention mechanism is called ARU-Net.' 
+* laru - The LARU-Net is an ARU-Net with a separable MDLSTM9 layer at the lowest resolution to incorporate full spatial context.
+'''
+
 @click.command()
-@click.option('--path_list_train', default="......./lists/train.lst")
-@click.option('--path_list_val', default="......./lists/val.lst")
-@click.option('--output_folder', default="......./models/")
+@click.option('--path_list', default="../lists/train.lst")
+@click.option('--output_folder', default="../models/")
 @click.option('--restore_path', default=None)
-@click.option('--thread_num', default=1)
-@click.option('--queue_capacity', default=4)
-@click.option('--max_val', default=None)
+@click.option(
+    '--model_name', '--model',
+    default='aru',
+    type=click.Choice(['ru', 'aru', 'laru'], case_sensitive=False), help=MODEL_TYPE_HELP.strip()
+)
+@click.option('--optimizer_name','--optimizer', 
+    default='rmsprop', 
+    type=click.Choice(['momentum', 'rmsprop'], case_sensitive=False)
+)
+@click.option('--cost_name', '--cost', 
+    default='cross_entropy', 
+    type=click.Choice([
+        'cross_entropy',
+        'cross_entropy_sum',
+        'dice',
+        'dice_mean',
+        'mse',
+        'mse_mean',
+        'nse',
+        'nse_mean',
+        'combined',
+    ], case_sensitive=False)
+)
+@click.option('--act_name', '--act', 
+    default='softmax', 
+    type=click.Choice(['softmax', 'sigmoid', 'identity'], case_sensitive=False)
+)
+@click.option('--thread_num', '-j', default=1)
+@click.option('--queue_capacity', '-q', default=1)
 @click.option('--scale_min', default=0.2)
 @click.option('--scale_max', default=0.5)
-@click.option('--scale_val', default=0.5)
 @click.option('--seed', default=13)
-@click.option('--steps_per_epoch', default=512)
-@click.option('--epochs', default=100)
-@click.option('--max_spat_dim', default=10000 * 10000)
+@click.option('--steps_per_epoch', default=256)
+@click.option('--epochs', '-e', default=100)
+@click.option('--max_pixels', '-b', default=(4 * 1024 * 1024))
 @click.option('--gpu_device', default='0')
+@click.option('--learning_rate', '--lr', '-l', default=0.001)
+@click.option('--n_class', '--num_classes', '--classes', '-n', default=3, type=int)
+@click.option('--channels', default=1, type=int)
+@click.option('--image2tb_every_step', default=10, type=int)
+@click.option('--lr_decay_rate', default=0.985, type=float)
+@click.option('--ema_decay', default=0.9995, type=float)
+
 def run(
-    path_list_train, 
-    path_list_val,
+    path_list, 
     output_folder,
     restore_path,
+    model_name,
+    optimizer_name,
+    cost_name,
+    act_name,
     thread_num,
     queue_capacity,
-    max_val,
     scale_min,
     scale_max,
-    scale_val,
     seed,
     steps_per_epoch,
     epochs,
-    max_spat_dim,
+    max_pixels,
     gpu_device,
+    learning_rate,
+    n_class,
+    channels,
+    image2tb_every_step,
+    lr_decay_rate,
+    ema_decay,
 ):
-    # Since the input images are of arbitrarily size, the autotune will significantly slow down training!
-    # (it is calculated for each image)
+    # https://stackoverflow.com/a/40126349
     os.environ["TF_CUDNN_USE_AUTOTUNE"] = "0"
-    # Images have to be gray scale images
-    img_channels = 1
-    # Number of output classes
-    n_class = 3
-    kwargs_dat = dict(
-        batchsize_tr=1,
-        batchsize_val=1,
-        scale_min=scale_min,
-        scale_max=scale_max,
-        scale_val=scale_val,
-        max_val=int(max_val) if (max_val is not None) else None,
-        affine_tr=True,
-        one_hot_encoding=True,
-        seed=seed,
-    )
+
     data_provider = Data_provider_la(
-        path_list_train,
-        path_list_val,
-        n_class,
-        # threadNum=thread_num,
-        queueCapacity=queue_capacity,
-        kwargs_dat=kwargs_dat,
+        path_list,
+        n_classes=n_class,
+        thread_num=thread_num,
+        queue_capacity=queue_capacity,
+        kwargs_dat=dict(
+            batchsize_tr=1,
+            channels=channels,
+            scale_min=scale_min,
+            scale_max=scale_max,
+            affine_tr=True,
+            one_hot_encoding=True,
+            seed=seed,
+            max_pixels=max_pixels,
+        ),
     )
 
-    # choose between 'u', 'ru', 'aru', 'laru'
-    model_kwargs = dict(model="ru")
-    model = ARUnet(img_channels, n_class, model_kwargs=model_kwargs)
-    opt_kwargs = dict(optimizer="rmsprop", learning_rate=0.001)
-    cost_kwargs = dict(cost_name="cross_entropy")
-    trainer = Trainer(model,opt_kwargs=opt_kwargs, cost_kwargs=cost_kwargs)
+    
+    model = ARUnet(
+        channels,
+        n_class,
+        model_kwargs=dict(
+            model=model_name.lower().strip(),
+        )
+    )
+ 
+    trainer = Trainer(
+        model,
+        opt_kwargs=dict(
+            optimizer=optimizer_name.lower().strip(),
+            learning_rate=learning_rate,
+            # lr_decay_rate=lr_decay_rate,
+            # ema_decay=ema_decay,
+        ),
+        cost_kwargs=dict(
+            cost_name=cost_name.lower().strip(),
+            act_name=act_name.lower().strip(),
+        ),
+    )
+    print('trainer.train steps_per_epoch', steps_per_epoch)
     trainer.train(
-        data_provider,
-        output_folder, 
-        restore_path,
+        data_provider=data_provider,
+        output_folder=output_folder, 
+        restore_path=restore_path,
         batch_steps_per_epoch=steps_per_epoch,
         epochs=epochs,
         gpu_device=str(gpu_device),
-        max_spat_dim=max_spat_dim
+        max_pixels=max_pixels,
+        image2tb_every_step=image2tb_every_step,
     )
 
 

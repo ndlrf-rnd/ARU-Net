@@ -69,9 +69,9 @@ def conv2d_bn_lrn_drop(scope_or_name,
         if dropout_maps:
             conv_shape = tf.shape(outputs)
             n_shape = tf.stack([conv_shape[0], 1, 1, conv_shape[3]])
-            outputs = tf.nn.dropout(outputs, keep_prob, noise_shape=n_shape)
+            outputs = tf.nn.dropout(outputs, rate=1 - keep_prob, noise_shape=n_shape)
         else:
-            outputs = tf.nn.dropout(outputs, keep_prob)
+            outputs = tf.nn.dropout(outputs, rate=1 - keep_prob)
         return outputs
 
 
@@ -131,9 +131,9 @@ def dil_conv2d_bn_lrn_drop(scope_or_name,
         if dropout_maps:
             conv_shape = tf.shape(outputs)
             n_shape = tf.stack([conv_shape[0], 1, 1, conv_shape[3]])
-            outputs = tf.nn.dropout(outputs, keep_prob, noise_shape=n_shape)
+            outputs = tf.nn.dropout(outputs, rate=1 - keep_prob, noise_shape=n_shape)
         else:
-            outputs = tf.nn.dropout(outputs, keep_prob)
+            outputs = tf.nn.dropout(outputs, rate=1 - keep_prob)
         return outputs
 
 
@@ -171,9 +171,9 @@ def deconv2d_bn_lrn_drop(scope_or_name, inputs, kernel_shape, out_shape, subS=2,
         if dropout_maps:
             conv_shape = tf.shape(outputs)
             n_shape = tf.stack([conv_shape[0], 1, 1, conv_shape[3]])
-            outputs = tf.nn.dropout(outputs, keep_prob, noise_shape=n_shape)
+            outputs = tf.nn.dropout(outputs, rate=1 - keep_prob, noise_shape=n_shape)
         else:
-            outputs = tf.nn.dropout(outputs, keep_prob)
+            outputs = tf.nn.dropout(outputs, rate=1 - keep_prob)
         return outputs
 
 

@@ -13,23 +13,23 @@ def get_cost(logits, tgt, kwargs={}):
     cost_name = kwargs.get("cost_name", "cross_entropy")
     act_name = kwargs.get("act_name", "softmax")
 
-
     if act_name is "softmax":
         act = tf.nn.softmax
-    if act_name is "sigmoid":
+    elif act_name is "sigmoid":
         act = tf.nn.sigmoid
-    if act_name is "identity":
+    elif act_name is "identity":
         act = tf.identity
-
+    else:
+        act = tf.nn.softmax
     if not cost_name is "cross_entropy":
         prediction = act(logits)
 
-    print("Cost Type: " + cost_name)
+    # print("Cost Type: {}".format(cost_name))
 
-    if cost_name is "cross_entropy":
+    if cost_name == "cross_entropy":
         class_weights = kwargs.get("class_weights", None)
         if class_weights is not None:
-            print("Class Weights: " + str(class_weights))
+            # print("Class Weights: " + str(class_weights))
             class_weights_tf = tf.constant(np.array(class_weights, dtype=np.float32))
             flat_logits = tf.reshape(logits, [-1, n_class])
             flat_labels = tf.reshape(tgt, [-1, n_class])
@@ -61,7 +61,7 @@ def get_cost(logits, tgt, kwargs={}):
                     labels=flat_labels
                 )
             )
-    elif cost_name is "dice":
+    elif cost_name == "dice":
         igore_last_channel = kwargs.get("igore_last_channel", True)
         eps = 1e-5
         if igore_last_channel:
@@ -70,7 +70,7 @@ def get_cost(logits, tgt, kwargs={}):
         intersection = tf.reduce_sum(prediction * tgt)
         union = eps + tf.reduce_sum(prediction) + tf.reduce_sum(tgt)
         loss = -(2 * intersection / (union))
-    elif cost_name is "dice_mean":
+    elif cost_name == "dice_mean":
         igore_last_channel = kwargs.get("igore_last_channel", True)
         eps = 1e-5
         uPred = tf.unstack(prediction,axis=3)
@@ -85,7 +85,7 @@ def get_cost(logits, tgt, kwargs={}):
             aDice = -(2 * intersection / (union))
             dices.append(aDice)
         loss = tf.reduce_mean(dices)
-    elif cost_name is "mse":
+    elif cost_name == "mse":
         igore_last_channel = kwargs.get("igore_last_channel", True)
         uPred = tf.unstack(prediction, axis=3)
         uTgt = tf.unstack(tgt, axis=3)
@@ -100,7 +100,7 @@ def get_cost(logits, tgt, kwargs={}):
 
         class_weights = kwargs.get("class_weights", None)
         if class_weights is not None:
-            print("Class Weights: " + str(class_weights))
+            # print("Class Weights: " + str(class_weights))
             norm = 0
             for aCH in range(0,len(mses)):
                 loss += class_weights[aCH]*mses[aCH]
@@ -109,7 +109,7 @@ def get_cost(logits, tgt, kwargs={}):
             for aCH in range(0,len(mses)):
                 loss += mses[aCH]
 
-    elif cost_name is "mse_mean":
+    elif cost_name == "mse_mean":
         igore_last_channel = kwargs.get("igore_last_channel", True)
         uPred = tf.unstack(prediction, axis=3)
         uTgt = tf.unstack(tgt, axis=3)
@@ -128,7 +128,7 @@ def get_cost(logits, tgt, kwargs={}):
         loss = tf.cond(tf.equal(globSum, 0.0),
                               lambda: tf.reduce_mean(mses),
                               lambda: get_weighted_mean(mses, sums, globSum))
-    elif cost_name is "nse":
+    elif cost_name == "nse":
         igore_last_channel = kwargs.get("igore_last_channel", True)
         eps = 1e-5
         norm = eps + tf.reduce_sum(tgt)+tf.reduce_sum(prediction)
@@ -138,7 +138,7 @@ def get_cost(logits, tgt, kwargs={}):
             norm = eps + tf.reduce_sum(tgt) + tf.reduce_sum(prediction)
         loss = tf.reduce_sum(tf.squared_difference(tgt, prediction))
         loss = loss/norm
-    elif cost_name is "nse_mean":
+    elif cost_name == "nse_mean":
         igore_last_channel = kwargs.get("igore_last_channel", True)
         eps = 1e-5
         uPred = tf.unstack(prediction, axis=3)
@@ -152,7 +152,7 @@ def get_cost(logits, tgt, kwargs={}):
             aRMSE = tf.reduce_sum(tf.squared_difference(uTgt[aCH], uPred[aCH]))/norm
             mses.append(aRMSE)
         loss = tf.reduce_mean(mses)
-    elif cost_name is "combined":
+    elif cost_name == "combined":
         igore_last_channel = kwargs.get("igore_last_channel", True)
 
         flat_logits = tf.reshape(logits, [-1, n_class])
@@ -174,13 +174,13 @@ def get_cost(logits, tgt, kwargs={}):
         loss2 = tf.reduce_mean(dices)
 
         loss = loss1 + loss2
-    elif cost_name is "cross_entropy_sum":
+    elif cost_name == "cross_entropy_sum":
         flat_logits = tf.reshape(logits, [-1, n_class])
         flat_labels = tf.reshape(tgt, [-1, n_class])
         loss = tf.reduce_sum(tf.nn.softmax_cross_entropy_with_logits(logits=flat_logits,
                                                                       labels=flat_labels))
     else:
-        raise ValueError("Unknown cost function: " % cost_name)
+        raise ValueError("Unknown cost function: {}".format(cost_name))
 
     regularizer = kwargs.get("regularizer", None)
     if regularizer is not None:
