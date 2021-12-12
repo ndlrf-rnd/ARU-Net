@@ -9,7 +9,7 @@ from scipy.ndimage.filters import gaussian_filter
 
 GT_RE = re.compile("^.+[_\-]gt[0-9]*\.[^.\/]+$", flags=re.IGNORECASE)
 
-    
+
 def read_image_list(pathToList):
     '''
 
@@ -104,4 +104,28 @@ def elastic_transform(image,elastic_value_x ,elastic_value_y):
     indices = numpy.reshape(y + dy, (-1, 1)), numpy.reshape(x + dx, (-1, 1)), numpy.reshape(z, (-1, 1))
     image = map_coordinates(image, indices, order=1).reshape(shape)
     return image
+
+
+def downscale_dims_original_way(iw, ih):
+    """
+    Image pre-processing: input image I is
+    - 1/2 for max{Ih, Iw} < 2000,
+    - 1/3 for 2000 ≤ max{Ih, Iw} < 4800
+    - 1/4 for >=4800
+    followed by a normalization to mean 0 and variance 1 (on pixel intensity level)
+    
+    Source: https://arxiv.org/pdf/1802.03345.pdf
+    """
+    m = max(iw, ih)
+    factor = 1
+    if (m < 2000):
+        factor = 2
+    elif (2000 <= m) and (m < 4800):
+        factor = 3
+    elif (4800 <= m):
+        factor = 4
+    return [
+        int(d / factor)
+        for d in (iw, ih,)
+    ]
 

@@ -5,22 +5,21 @@ import numpy
 from scipy import ndimage
 from PIL import Image
 
-from random import uniform
-from random import shuffle
-from random import seed
+import random
+# import uniform
+# from random import shuffle
+# from random import seed
 from scipy import misc
 from .util import read_image_list
 from .util import atransform
 from .util import elastic_transform
-from skimage.morphology import skeletonize
-from scipy.ndimage.morphology import binary_dilation
+from skimage import morphology
 
 DEBUG = bool(os.environ.get('DEBUG', False))
 
 Image.MAX_IMAGE_PIXELS = None
 
 DEFAULT_MASK_EXTENSION = '.png'
-TARGET_THRESHOLD = 64
 
 def scale_to_area(width, height, target_area):
     ratio = height / width
@@ -31,14 +30,13 @@ def scale_to_area(width, height, target_area):
     height_new = int(a * ratio)
     return width_new, height_new
 
-
 def load_img(
     path,
     debug,
     channels,
     max_pixels,
     n_classes,
-    # one_hot_encoding,
+    one_hot_encoding,
     elastic_value_x,
     elastic_value_y,
     elastic,
@@ -48,6 +46,7 @@ def load_img(
     rotateMod90,
     skelet,
     dilate_num,
+    dominating_channel,
     min_scale,
     max_scale,
 ):
@@ -69,17 +68,17 @@ def load_img(
     constrained_scale = max(constrained_w / aImg.width, constrained_h / aImg.height)
     max_scale = min(constrained_scale, max_scale)
     min_scale = min(min_scale, max_scale)
-    aScale = uniform(min_scale, max_scale)
+    aScale = random.uniform(min_scale, max_scale)
 
     maps.append(aImg)
 
     # In the one hot encoding scenario don not load the clutter class GT
-    # to_load = n_classes
-    # if one_hot_encoding:
-    #     to_load = n_classes - 1
+    to_load = n_classes
+    if one_hot_encoding:
+        to_load = n_classes - 1
 
     filename, file_extension = os.path.splitext(path)
-    for aC in range(n_classes):
+    for aC in range(0, to_load):
         pathTR = '{}_GT{}{}'.format(filename, aC, file_extension)
         if not os.path.exists(pathTR):
             pathTR = '{}_GT{}{}'.format(filename, aC, DEFAULT_MASK_EXTENSION)
@@ -99,7 +98,7 @@ def load_img(
         print('maps', [(m.width, m.height,) for m in maps])
 
     resized_maps = []
-    for c in range(channels + n_classes):
+    for c in range(0, channels + to_load):
         imm = maps[c]
         resized_maps.append(
             numpy.expand_dims(
@@ -113,56 +112,42 @@ def load_img(
                 2
             )
         )
-    # add clutter for one-hot ncoding
-    resized_maps.append(255 - numpy.max(resized_maps[channels:], axis=0))
-    resized_maps = numpy.dstack(resized_maps)
+    res = numpy.dstack(resized_maps)
     if debug:
         print('Loaded resized maps shape:', res.shape)
 
     if affine:
-        resized_maps = atransform(resized_maps, affine_value)
+        res = atransform(res, affine_value)
     if elastic:
-        resized_maps = elastic_transform(resized_maps, elastic_value_x, elastic_value_y)
+        res = elastic_transform(res, elastic_value_x, elastic_value_y)
     if rotate or rotateMod90:
-        angle = uniform(0, 360)
-        if rotateMod90:
-            if angle < 90:
-                angle = 0.0
-            elif angle < 180.0:
-                angle = 90.0
-            elif angle < 270.0:
-                angle = 180.0
-            else:
-                angle = 270.0
-        resized_maps = ndimage.interpolation.rotate(resized_maps, angle)
-    
-    
-    aImg = resized_maps[:, :, :channels] / 255.0
-    
-    
-    aTgt = numpy.where(resized_maps[:, :, channels:] > TARGET_THRESHOLD, 1.0, 0.0)
+        angle = random.randrange(4) * 90.0 if rotateMod90 else random.uniform(0, 360)
+        res = ndimage.interpolation.rotate(res, angle)
+    aImg = res[:, :, 0:channels]
+    aTgt = res[:, :, channels:]
+
+
+    aTgt = numpy.where(aTgt > 64, 1.0, 0.0)
     if skelet:
-        for c in range(n_classes):
-            tTgt = skeletonize(aTgt[:,:,c])
-            tTgt = binary_dilation(tTgt, iterations=dilate_num)
+        for c in range(0, n_classes-1):
+            tTgt = morphology.skeletonize(aTgt[:,:,c])
+            tTgt = morphology.binary_dilation(tTgt, iterations=dilate_num)
             aTgt[:, :, c] = tTgt
-        tTgt[:,:,-1] = numpy.max(aTgt[:,:,:-2], axis=0)
-    
     # Ensure a one-hot-encoding (could be damaged due to transformations)
     # First Channel is of highest importance
-    # if one_hot_encoding:
-    #     aMap = aTgt[:, :, 0]
-    #     for aM in range(0, n_classes - 1):
-    #         if aM == 0:
-    #             continue
-    #         else:
-    #             tMap = numpy.logical_and(aTgt[:, :, aM], numpy.logical_not(aMap))
-    #             aMap = numpy.logical_or(aMap, tMap)
-    #             aTgt[:, :, aM] = tMap
-    #     # Add+Calculate the clutter map
-    #     aTgt = numpy.pad(aTgt, ((0,0),(0,0),(0,1)), mode='constant')
-    #     aTgt[:, :, n_classes - 1] = numpy.logical_not(aMap)
-    # aTgt = numpy.mean(aTgt, axis=2) / 255
+    if one_hot_encoding:
+        aMap = aTgt[:, :, dominating_channel]
+        for aM in range(0, n_classes - 1):
+            if aM == dominating_channel:
+                continue
+            else:
+                tMap = numpy.logical_and(aTgt[:, :, aM], numpy.logical_not(aMap))
+                aMap = numpy.logical_or(aMap, tMap)
+                aTgt[:, :, aM] = tMap
+        # Add+Calculate the clutter map
+        aTgt = numpy.pad(aTgt, ((0,0),(0,0),(0,1)), mode='constant')
+        aTgt[:, :, n_classes - 1] = numpy.logical_not(aMap)
+    aImg = aImg / 255.0
     return aImg, aTgt
         
 class Data_provider_la(object):
@@ -196,7 +181,7 @@ class Data_provider_la(object):
 
         self.mvn = kwargs_dat.get("mvn", False)
         self.seed = kwargs_dat.get("seed", 13)
-        seed(self.seed)
+        random.seed(self.seed)
         
         self.batchsize_tr = kwargs_dat.get("batchsize_tr", 1)
         self.batchsize_val = kwargs_dat.get("batchsize_val", 1)
@@ -207,19 +192,21 @@ class Data_provider_la(object):
         self.elastic_val = kwargs_dat.get("elastic_val", False)
         self.elastic_value_x = kwargs_dat.get("elastic_val_x", 0.0002)
         self.elastic_value_y = kwargs_dat.get("elastic_value_y", 0.0002)
-        self.rotate_tr = kwargs_dat.get("rotate_tr", False)
-        self.rotate_val = kwargs_dat.get("rotate_val", False)
+        self.rotate = kwargs_dat.get("rotate_tr", False)
+        self.rotate = kwargs_dat.get("rotate_val", False)
         self.rotateMod90_tr = kwargs_dat.get("rotateMod90_tr", False)
         self.rotateMod90_val = kwargs_dat.get("rotateMod90_val", False)
-        self.skelet = kwargs_dat.get("skelet", False)
+        self.skelet = kwargs_dat.get("skelet", True)
         self.dilate_num = kwargs_dat.get("dilate_num", 1)
         self.scale_min = kwargs_dat.get("scale_min", 1.0)
         self.max_val = kwargs_dat.get("max_val", None)
         self.max_pixels = kwargs_dat.get("max_pixels", 4 * 1024 * 1024)
         self.scale_max = kwargs_dat.get("scale_max", 1.0)
-        # self.one_hot_encoding = kwargs_dat.get("one_hot_encoding", True)
+        self.one_hot_encoding = kwargs_dat.get("one_hot_encoding", True)
         self.val_mode = kwargs_dat.get("val_mode", False)
 
+        self.dominating_channel = kwargs_dat.get("dominating_channel", 0)
+        self.dominating_channel = min(self.dominating_channel, n_classes - 1)
         self.shuffle = kwargs_dat.get("shuffle", True)
         self.debug = kwargs_dat.get("debug", False) or DEBUG
         self.channels = kwargs_dat.get("channels", 3)
@@ -231,14 +218,14 @@ class Data_provider_la(object):
             self.list_train = read_image_list(path_list_train)
             self.size_train = len(self.list_train)
             self.q_train, self.threads_tr = self._get_list_queue(self.list_train, self.thread_num, self.queue_capacity, self.stopTrain, self.batchsize_tr,
-                                                self.scale_min, self.scale_max, self.affine_tr, self.elastic_tr, self.rotate_tr, self.rotateMod90_tr)
-        if path_list_val != None:
-            self.list_val = read_image_list(path_list_val)
-            if (self.max_val is not None) and (self.max_val < len(self.list_val)):
-                shuffle(self.list_val) 
-                self.list_val = list(sorted(self.list_val[:self.max_val]))
-            self.size_val = len(self.list_val)
-            self.q_val, self.threads_val = self._get_list_queue(self.list_val, self.thread_num, self.queue_capacity, self.stopVal, self.batchsize_val, self.scale_min, self.scale_max, self.affine_val, self.elastic_val, self.rotate_val, self.rotateMod90_val)
+                                                self.scale_min, self.scale_max, self.affine_tr, self.elastic_tr, self.rotate, self.rotateMod90_tr)
+#         if path_list_val != None:
+#             self.list_val = read_image_list(path_list_val)
+#             if (self.max_val is not None) and (self.max_val < len(self.list_val)):
+#                 shuffle(self.list_val) 
+#                 self.list_val = list(sorted(self.list_val[:self.max_val]))
+#             self.size_val = len(self.list_val)
+#             self.q_val, self.threads_val = self._get_list_queue(self.list_val, self.thread_num, self.queue_capacity, self.stopVal, self.batchsize_val, self.scale_min, self.scale_max, self.affine_val, self.elastic_val, self.rotate, self.rotateMod90_val)
 
     def stop_all(self):
         self.stopTrain.set()
@@ -252,7 +239,7 @@ class Data_provider_la(object):
         if self.list_val != None:
             self.stopVal.set()
             self.stopVal = threading.Event()
-            self.q_val, self.threads_val = self._get_list_queue(self.list_val, self.thread_num, self.queue_capacity, self.stopVal, self.batchsize_val, self.scale_min, self.scale_max, self.affine_val, self.elastic_val, self.rotate_val, self.rotateMod90_val)
+            self.q_val, self.threads_val = self._get_list_queue(self.list_val, self.thread_num, self.queue_capacity, self.stopVal, self.batchsize_val, self.scale_min, self.scale_max, self.affine_val, self.elastic_val, self.rotate, self.rotateMod90_val)
 
     def next_data(self, list=None):
         if self.q_train is None:
@@ -263,30 +250,30 @@ class Data_provider_la(object):
 
 
     def _get_list_queue(self, aList, thread_num, queue_capacity, stopEvent, batch_size, min_scale, max_scale, affine, elastic, rotate, rotateMod90):
-        q = Queue(maxsize=queue_capacity)
-        threads = []
-        for t in range(thread_num):
-            threads.append(
-                threading.Thread(
-                    target=self._fillQueue,
-                    daemon=True,
-                    args=(
-                        q,
-                        aList[:], 
-                        stopEvent,
-                        batch_size,
-                        min_scale,
-                        max_scale,
-                        affine,
-                        elastic,
-                        rotate,
-                        rotateMod90,
-                    )
-                )
-            )
-        for t in threads:
-            t.start()
-        return q, threads
+        return Queue(maxsize=queue_capacity)
+#         threads = []
+#         for t in range(thread_num):
+#             threads.append(
+#                 threading.Thread(
+#                     target=self._fillQueue,
+#                     daemon=True,
+#                     args=(
+#                         q,
+#                         aList[:], 
+#                         stopEvent,
+#                         batch_size,
+#                         min_scale,
+#                         max_scale,
+#                         affine,
+#                         elastic,
+#                         rotate,
+#                         rotateMod90,
+#                     )
+#                 )
+#             )
+#         for t in threads:
+#             t.start()
+#         return q, threads
 
 
     def _fillQueue(self, q, aList, stopEvent, batch_size, min_scale, max_scale, affine, elastic, rotate, rotateMod90):
@@ -314,7 +301,7 @@ class Data_provider_la(object):
                         channels=self.channels,
                         max_pixels=self.max_pixels,
                         n_classes=self.n_classes,
-                        # one_hot_encoding=self.one_hot_encoding,
+                        one_hot_encoding=self.one_hot_encoding,
                         elastic_value_x=self.elastic_value_x,
                         elastic_value_y=self.elastic_value_y,
                         elastic=elastic,
@@ -324,6 +311,7 @@ class Data_provider_la(object):
                         rotateMod90=rotateMod90,
                         skelet=self.skelet,
                         dilate_num=self.dilate_num,
+                        dominating_channel=self.dominating_channel,
                         min_scale=min_scale,
                         max_scale=max_scale,
                     )
@@ -366,7 +354,7 @@ class Data_provider_la(object):
                 if self.val_mode:
                     q.put(curPair + [paths])
                 else:
-                    q.put(curPair + [paths])
+                    q.put(curPair)
                 curPair = None
                 aIdx += 1
                 if self.debug:

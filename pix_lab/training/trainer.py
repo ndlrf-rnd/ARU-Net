@@ -4,11 +4,14 @@ import datetime
 import os
 import re
 import sys
+import time
 
-import numpy as np
-
+import numpy
+from clearml import Logger
+from clearml import Task
 import tqdm
 import tensorflow as tf
+
 tf.compat.v1.disable_eager_execution()
 
 from .cost import get_cost
@@ -36,6 +39,17 @@ def export_graph(sess, export_name, output_nodes=['output']):
     print("Export Finished!")
     return export_name
 
+def im2arr(im_in, normalize=False):
+    im = numpy.array(im_in)
+    if normalize:
+        im = (im - numpy.min(im)) / ((numpy.max(im) - numpy.min(im)) or 1)
+    if len(im.shape) == 2:
+        return Image.fromarray(numpy.array(im * 255, dtype=numpy.uint8)).convert('L')
+    elif len(im.shape) == 3:
+        return Image.fromarray(numpy.array(im * 255, dtype=numpy.uint8)).convert('RGB')
+    else:
+        raise Exception('Cant convert to image: invalid input tensor dim')
+
 class Trainer(object):
     """
     Trains a unet instance
@@ -48,16 +62,17 @@ class Trainer(object):
 
     def __init__(self, net, opt_kwargs={}, cost_kwargs={}):
         self.net = net
-        
         # Other params
-        self.checkpoint_every_epoch = opt_kwargs.get('checkpoint_every_epoch', 1)
         self.tgt = tf.compat.v1.placeholder("float", shape=[None, None, None, self.net.n_class])
         self.global_step = tf.compat.v1.placeholder("int64")
         self.opt_kwargs = opt_kwargs
         self.cost_kwargs = cost_kwargs
         self.cost_name=cost_kwargs.get("cost_name", "cross_entropy")
         self.histogram_freq=opt_kwargs.get('histogram_freq', 1)
-        
+        self.task = Task.init(project_name="document-segmentation/bd", task_name="aru-net train")
+        # description='Baseline detection using *RU-Net'                   )
+        self.logger = self.task.get_logger()
+
         self.cost = get_cost(self.net.logits, self.tgt, self.cost_kwargs)
 
     def _initialize(self, batch_steps_per_epoch=256, output_folder='./models/default/'):
@@ -69,14 +84,14 @@ class Trainer(object):
             batch_steps_per_epoch=batch_steps_per_epoch,
             kwargs=self.opt_kwargs
         )
-
+        
+                        
         init = tf.compat.v1.global_variables_initializer()
         if not output_folder is None:
             output_folder = os.path.abspath(output_folder)
             if not os.path.exists(output_folder):
-                print("Allocating '{:}'".format(output_folder))
+                print("Creating '{:}'".format(output_folder))
                 os.makedirs(output_folder)
-
         return init
     
     def train(
@@ -87,8 +102,10 @@ class Trainer(object):
         batch_steps_per_epoch=256,
         epochs=100,
         gpu_device="0",
-        max_pixels=10000 * 10000,
-        image2tb_every_step=10,
+        max_pixels=4 * 1024 * 1024,
+        image2tb_every_step=None,
+        checkpoint_every_epoch=1,
+        sample_every_steps=None,
     ):
         """
         Launches the training process
@@ -112,8 +129,6 @@ class Trainer(object):
         logdir = os.path.abspath("logs/scalars/aru-net-{}".format(current_time))
         print("TF logs dir: {}".format(logdir))
         
-        train_summary_writer = tf.compat.v2.summary.create_file_writer(logdir)
-        
         if output_folder is not None:
             output_folder = os.path.abspath(output_folder)
             if not os.path.exists(output_folder):
@@ -127,16 +142,15 @@ class Trainer(object):
             batch_steps_per_epoch=batch_steps_per_epoch,
             output_folder=output_folder
         )
-
         
         session_conf = tf.compat.v1.ConfigProto(allow_soft_placement=True)
         if gpu_device != 'cpu':
             session_conf.gpu_options.visible_device_list = gpu_device
         
         best_loss = None
-
+        checkpoint_path = None
         with tf.compat.v1.Session(config=session_conf) as sess:
-            sess.run(train_summary_writer.init())
+            # sess.run(train_summary_writer.init())
             sess.run(init)
             restore_path = restore_path or output_folder
             print('RESTORE PATH: {}'.format(restore_path))
@@ -145,6 +159,7 @@ class Trainer(object):
             
             start_from_epoch = 1
             if latest_checkpoint_path is not None:
+                checkpoint_path = latest_checkpoint_path
                 cp_state = tf.train.get_checkpoint_state(latest_checkpoint_path)
                 print("Loading Checkpoint: '{}' ...".format(latest_checkpoint_path))
                 self.net.restore(sess, latest_checkpoint_path)
@@ -158,11 +173,11 @@ class Trainer(object):
 
             print("Starting busyloop...")
             
-            graph = tf.compat.v1.get_default_graph()
+            predictor = None
+            if sample_every_steps is not None:
+                graph = tf.compat.v1.get_default_graph()
+                predictor = graph.get_tensor_by_name('output:0')
 
-            x = graph.get_tensor_by_name('inImg:0')
-            predictor = graph.get_tensor_by_name('output:0')
-            
             for epoch in range(start_from_epoch, epochs + 1):
                 total_loss = 0
                 lr = 0
@@ -170,11 +185,14 @@ class Trainer(object):
                     for step in tepoch:
                         global_step = int(((epoch - 1) * batch_steps_per_epoch) + step)
                         tepoch.set_description("Epoch {} [TRN: {}]".format(epoch, step))
-                        batch_x, batch_tgt = data_provider.next_data()
-                        skipped = 0
+                        dp_start = time.time()
+                        batch_x, batch_tgt, paths = data_provider.next_data()
+ 
+                        dp_time = time.time() - dp_start
                         if batch_x is None:
                             print("No Training Data available. Skip Training Path.")
                             break
+                        train_start = time.time()
                         opt, loss, lr = sess.run(
                             [self.optimizer, self.cost, self.learning_rate_node],
                             feed_dict={
@@ -183,80 +201,88 @@ class Trainer(object):
                                 self.global_step: global_step,
                             },
                         )
+                        
                         if self.cost_name is "cross_entropy_sum":
                             sh = batch_x.shape
                             loss = loss / (sh[1] * sh[2] * sh[0])
-
-
-                        total_loss += loss
-
-                        
-                        with train_summary_writer.as_default():
+                        train_time = time.time() - train_start
                             
-                            sess.run([
-                                tf.compat.v2.summary.scalar('loss', loss, step=global_step),
-                                tf.compat.v2.summary.scalar('lr', lr, step=global_step),
-                                tf.compat.v2.summary.scalar('input/width', batch_x.shape[2], step=global_step),
-                                tf.compat.v2.summary.scalar('input/height', batch_x.shape[1], step=global_step),
-                                tf.compat.v2.summary.scalar('input/pixels', batch_x.shape[1] * batch_x.shape[2], step=global_step),
-                            ])
-                            if ((global_step + 1) % image2tb_every_step) == 0:
-                                pred = sess.run(predictor, feed_dict={x: batch_x})
-                                maxed_gt = (
-                                    (np.expand_dims(
-                                        np.argmax(
-                                            batch_tgt[:,:,:,:],
-                                            axis=3
-                                        ),
-                                        axis=3
-                                    ) + 1)  * 64
-                                ).astype(np.uint8)
-
-                                maxed_out = (
-                                    (np.expand_dims(
-                                        np.argmax(
-                                            pred[:,:,:,:],
-                                            axis=3
-                                        ),
-                                        axis=3
-                                    ) + 1)  * 64
-                                ).astype(np.uint8)
-                                print('batch_x', batch_x.shape, 'prediction', pred.shape)
-                                sess.run([
-                                    tf.compat.v2.summary.image('image/input', (batch_x * 255).astype(np.uint8), step=global_step),
-                                    tf.compat.v2.summary.image('image/gt', maxed_gt, step=global_step),
-                                    tf.compat.v2.summary.image('image/output', maxed_out, step=global_step),
-                                    # tf.compat.v2.summary.trace_export(name="graph_trace", step=global_step, profiler_outdir=logdir),
-                                ])
-                        tepoch.set_postfix(**dict(
+                        if (
+                            loss > 2.0
+                        ) or (
+                            (sample_every_steps is not None) and ((global_step % sample_every_steps) == 0)
+                        ):
+        
+                            prediction = sess.run(predictor, feed_dict={self.net.x: batch_x})
+                            print(
+                                batch_x.shape, numpy.min(batch_x), numpy.max(batch_x),
+                                batch_tgt.shape, numpy.min(batch_tgt), numpy.max(batch_tgt),
+                                prediction.shape, numpy.min(prediction), numpy.max(prediction),
+                            )
+                            self.logger.report_image(
+                                "image",
+                                ":input",
+                                iteration=global_step,
+                                image=im2arr(batch_x[0,:,:,0]),
+                            )
+                            
+                            for channel in range(prediction.shape[3]):
+                                self.logger.report_image(
+                                    "image", 
+                                    ":x:channel:{}".format(channel), 
+                                    iteration=global_step, 
+                                    image=im2arr(prediction[0,:,:,channel])
+                                )
+                            
+                            for channel in range(batch_tgt.shape[3]):
+                                self.logger.report_image(
+                                    "image", 
+                                    ":target:channel:{}".format(channel), 
+                                    iteration=global_step, 
+                                    image=im2arr(batch_tgt[0,:,:,channel])
+                                )
+                        
+                        
+                        self.logger.report_scalar(title=":loss:train", series='bd', iteration=global_step, value=loss)
+                        
+                        self.logger.flush()
+                        
+                        total_loss += loss
+                        print('{} {} {}'.format(global_step, loss, ' '.join(paths)))
+                        tepoch.set_postfix(
                             loss="{:.5f}".format(loss),
                             loss_agg="{:.5f}".format(total_loss / (step or 1)),
-                            lr="{:.7f}".format(lr)
-                        ))
-
-                if (best_loss is None) or (total_loss < best_loss):
-                    best_loss = total_loss
+                            lr="{:.7f}".format(lr),
+                            train_time="{:.3f}".format(train_time),
+                            dp_time="{:.3f}".format(dp_time),
+                            mpx_per_sec="{:.3f}".format(
+                                ((batch_x.shape[1] * batch_x.shape[2]) / 1000000) / (train_time + dp_time)
+                            )
+                        )
+                        
 
                 # Save checkpoint
-                if output_folder is not None:
-                    if (epoch % self.checkpoint_every_epoch) == 0:
-                        checkpoint_base_path = os.path.join(output_folder, "model-")
+                if (output_folder is not None) and ((epoch % checkpoint_every_epoch) == 0):
+                    checkpoint_base_path = os.path.join(output_folder, "model-")
 
-                        checkpoint_path = '{}{:02d}'.format(checkpoint_base_path, epoch)
-                        print('Saving checkpoint to: {}'.format(checkpoint_path))
-                        self.net.save(sess, checkpoint_path)
-                        # write_meta_graph=False
+                    checkpoint_path = '{}{:02d}'.format(checkpoint_base_path, epoch)
+                    print('Saving checkpoint to: {}'.format(checkpoint_path))
+                    self.net.save(sess, checkpoint_path)
 
-                        graph_path = '{}{:02d}.pb'.format(checkpoint_base_path, epoch)
-                        print('Saving TF graph to: {}'.format(graph_path))
-                        export_graph(sess=sess, export_name=graph_path, output_nodes=['output'])
+                    graph_path = '{}{:02d}.pb'.format(checkpoint_base_path, epoch)
+                    print('Saving TF graph to: {}'.format(graph_path))
+                    export_graph(sess=sess, export_name=graph_path, output_nodes=['output'])
 
 
                 print('Epoch {}, loss: {}, lr: {}'.format(epoch, total_loss, lr))
+            if output_folder is not None:
+                checkpoint_base_path = os.path.join(output_folder, "model-")
+                graph_path = '{}{:02d}.pb'.format(checkpoint_base_path, int(epoch or start_from_epoch))
+                if not os.path.exists(graph_path):
+                    print('Saving TF graph to: {}'.format(graph_path))
+                    export_graph(sess=sess, export_name=graph_path, output_nodes=['output'])
         data_provider.stop_all()
         print("Processing finished!")
 
-        if best_loss is not None:
-            print(" Best train Loss: {}".format(best_loss))
             
         return checkpoint_path

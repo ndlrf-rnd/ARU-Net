@@ -255,7 +255,7 @@ class ARUnet(object):
             self.predictor = tf.identity(self.logits, name='output')
 
 
-    def save(self, sess, model_path):
+    def save(self, sess, model_path, global_step=None):
         """
         Saves the current session to a checkpoint
 
@@ -264,7 +264,7 @@ class ARUnet(object):
         """
 
         saver = tf.train.Saver(max_to_keep=50)
-        save_path = saver.save(sess, model_path)
+        save_path = saver.save(sess, model_path, global_step=global_step)
         return save_path
 
     def restore(self, sess, model_path, var_dict=None):

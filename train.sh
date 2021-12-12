@@ -3,7 +3,7 @@ set -e
 export STEPS="${STEPS:-256}"
 export EPOCHS="${EPOCHS:-20}"
 
-export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/home/vvasin/miniconda3/pkgs/cudatoolkit-10.0.130-0/lib"
+export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/root/miniconda3/pkgs/cudatoolkit-10.0.130-0/lib"
 
 export MODEL_NAME='aru'
 export COST_NAME='cross_entropy'

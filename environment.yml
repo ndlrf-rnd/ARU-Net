@@ -95,4 +95,3 @@ dependencies:
     - urllib3==1.26.6
     - werkzeug==1.0.1
     - wrapt==1.12.1
-prefix: /home/vvasin/miniconda3/envs/aru-net

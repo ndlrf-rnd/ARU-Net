@@ -1,7 +1,7 @@
 import numpy as np
 import tensorflow.compat.v1 as tf
 
-from tensorflow.compat.v1.layers import batch_normalization
+# from tensorflow.compat.v1.layers import batch_normalization
 from tensorflow.compat.v1.nn.rnn_cell import DropoutWrapper
 from tensorflow.compat.v1.nn.rnn_cell import LSTMCell
 from tensorflow.compat.v1.nn.rnn_cell import GRUCell

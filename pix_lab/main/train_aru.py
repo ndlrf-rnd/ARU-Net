@@ -54,12 +54,13 @@ MODEL_TYPE_HELP = '''
 @click.option('--max_pixels', '-b', default=(4 * 1024 * 1024))
 @click.option('--gpu_device', default='0')
 @click.option('--learning_rate', '--lr', '-l', default=0.001)
-@click.option('--n_class', '--num_classes', '--classes', '-n', default=3, type=int)
+@click.option('--n_classes', '--n_class', '--num_classes', '--classes', '-n', default=2, type=int)
 @click.option('--channels', default=1, type=int)
-@click.option('--image2tb_every_step', default=10, type=int)
+@click.option('--image2tb_every_step', default=None, type=int)
+@click.option('--checkpoint_every_epoch', default=10, type=int)
+@click.option('--sample_every_steps', default=None, type=int)
 @click.option('--lr_decay_rate', default=0.985, type=float)
 @click.option('--ema_decay', default=0.9995, type=float)
-
 def run(
     path_list, 
     output_folder,
@@ -78,9 +79,11 @@ def run(
     max_pixels,
     gpu_device,
     learning_rate,
-    n_class,
+    n_classes,
     channels,
     image2tb_every_step,
+    checkpoint_every_epoch,
+    sample_every_steps,
     lr_decay_rate,
     ema_decay,
 ):
@@ -89,7 +92,7 @@ def run(
 
     data_provider = Data_provider_la(
         path_list,
-        n_classes=n_class,
+        n_classes=n_classes,
         thread_num=thread_num,
         queue_capacity=queue_capacity,
         kwargs_dat=dict(
@@ -98,7 +101,7 @@ def run(
             scale_min=scale_min,
             scale_max=scale_max,
             affine_tr=True,
-            one_hot_encoding=True,
+            # one_hot_encoding=True,
             seed=seed,
             max_pixels=max_pixels,
         ),
@@ -107,7 +110,7 @@ def run(
     
     model = ARUnet(
         channels,
-        n_class,
+        n_classes + 1,  # pne for generated background layer
         model_kwargs=dict(
             model=model_name.lower().strip(),
         )
@@ -136,6 +139,8 @@ def run(
         gpu_device=str(gpu_device),
         max_pixels=max_pixels,
         image2tb_every_step=image2tb_every_step,
+        checkpoint_every_epoch=checkpoint_every_epoch,
+        sample_every_steps=sample_every_steps,
     )
 
 
